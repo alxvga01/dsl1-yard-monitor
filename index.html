@@ -78,6 +78,7 @@ body { background: var(--bg); font-family: -apple-system, BlinkMacSystemFont, 'S
 .space.ola2 { border-color: var(--ola2); background: rgba(255,152,0,0.12); }
 .space.risk { animation: pulse-risk 1.5s ease-in-out infinite; border-color: var(--risk); }
 .space.selected { box-shadow: 0 0 0 3px #FFD600; }
+@keyframes spin { to { transform: rotate(360deg); } }
 @keyframes pulse-risk { 0%,100%{background:rgba(244,67,54,0.1)} 50%{background:rgba(244,67,54,0.25)} }
 
 .space-number { position: absolute; top: 4px; right: 8px; font-size: 16px; font-weight: 700; color: var(--text-muted); }
@@ -287,6 +288,13 @@ body { background: var(--bg); font-family: -apple-system, BlinkMacSystemFont, 'S
 </style>
 </head>
 <body>
+
+<!-- Overlay de carga -->
+<div id="loadingOverlay" style="position:fixed;top:0;left:0;right:0;bottom:0;background:var(--bg);z-index:8000;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;">
+  <div style="width:60px;height:60px;border:5px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin 0.9s linear infinite;"></div>
+  <div style="font-size:18px;font-weight:700;color:var(--text);">Cargando Yard Monitor...</div>
+  <div style="font-size:13px;color:var(--text-sec);">Conectando con el servidor</div>
+</div>
 
 <div class="header">
   <div class="header-left">
@@ -553,16 +561,26 @@ function apiPost(action, data, callback) {
   }
 }
 
+function ocultarOverlay() {
+  var ov = document.getElementById('loadingOverlay');
+  if (ov && ov.style.display !== 'none') {
+    ov.style.opacity = '0';
+    ov.style.transition = 'opacity 0.4s';
+    setTimeout(function(){ ov.style.display = 'none'; }, 400);
+  }
+}
+
 function fetchData() {
   apiGet('all', function(resp) {
-    if (resp.yard) yardData = resp.yard;
-    if (resp.wave) waveData = resp.wave;
-    if (resp.roster && resp.roster.length) rosterData = resp.roster;
+    if (resp && resp.yard) yardData = resp.yard;
+    if (resp && resp.wave) waveData = resp.wave;
+    if (resp && resp.roster && resp.roster.length) rosterData = resp.roster;
     document.getElementById('refreshDot').className = 'refresh-dot';
     render();
     calcularCancelados();
     if (document.getElementById('pendientesModal').classList.contains('active')) renderPendientesModal();
     if (document.getElementById('canceladosModal').classList.contains('active')) renderCancelados();
+    ocultarOverlay();
   });
 }
 
@@ -920,7 +938,7 @@ function renderCanceladoCard(c) {
   html += '<div class="cancelado-info">';
   html += '<div class="nombre">' + c.daName + '<span class="tipo-badge" style="background:' + tipoBadgeColor(c.tipo) + '">' + c.tipo + '</span></div>';
   var dspCorto = c.dsp || companyToDsp(c.company);
-  html += '<div class="detalle">' + c.daId + ' — ' + (dspCorto ? '<b style="color:var(--text)">' + dspCorto + '</b> · ' : '') + c.company + '</div>';
+  html += '<div class="detalle">' + c.daId + (dspCorto ? ' — <b style="color:var(--text)">' + dspCorto + '</b>' : '') + '</div>';
   html += '</div>';
   if (firmado) {
     html += '<div style="display:flex;align-items:center;gap:10px;">';
@@ -1185,7 +1203,6 @@ function construirHojaFirmas(firmas, noshows) {
       '<td>' + r.id + '</td>' +
       '<td>' + (r.tipo || '') + '</td>' +
       '<td><b>' + (dspCorto || '') + '</b></td>' +
-      '<td>' + (r.company || '') + '</td>' +
       '<td>' + (r.hora || '') + '</td>' +
       '<td>' + celdaFirma + '</td>' +
       '</tr>';
@@ -1205,7 +1222,7 @@ function construirHojaFirmas(firmas, noshows) {
     '<h1>DSL1 — Hoja de Firmas de DAs Cancelados</h1>' +
     '<div class="sub">Fecha: ' + fecha + ' &nbsp;|&nbsp; Firmas: ' + totalFirmas + ' &nbsp;|&nbsp; No Show: ' + totalNoShow + '</div>' +
     '<table><thead><tr>' +
-    '<th>#</th><th>Nombre del DA</th><th>DA ID</th><th>Tipo</th><th>DSP</th><th>Compañía</th><th>Hora</th><th>Firma / Estatus</th>' +
+    '<th>#</th><th>Nombre del DA</th><th>DA ID</th><th>Tipo</th><th>DSP</th><th>Hora</th><th>Firma / Estatus</th>' +
     '</tr></thead><tbody>' + rows + '</tbody></table>' +
     '<button class="noprint" onclick="window.print()" style="margin-top:20px;padding:12px 24px;background:#00897B;color:#fff;border:none;border-radius:6px;font-size:15px;cursor:pointer;">Imprimir</button>' +
     '</body></html>';
@@ -1606,7 +1623,16 @@ function parseCSVToRoutes(text) {
   return routes;
 }
 
-try { initGrid(); fetchData(); setInterval(fetchData, REFRESH_MS); } catch(e) { console.error('Init error:', e); }
+try {
+  initGrid();
+  fetchData();
+  setInterval(fetchData, REFRESH_MS);
+  // Timeout de seguridad: ocultar overlay a los 12s aunque el servidor tarde
+  setTimeout(ocultarOverlay, 12000);
+} catch(e) {
+  console.error('Init error:', e);
+  ocultarOverlay();
+}
 </script>
 </body>
 </html>
