@@ -849,7 +849,7 @@ function parseRoster(text) {
     var company = cols.length > 0 ? cols[cols.length-1].trim() : '';
     var tipo = tipoRosterRelevante(serviceType);
     if (!tipo) continue; // filtrar solo los 3 tipos
-    result.push({ daId: daId, daName: daName, tipo: tipo, serviceType: serviceType, company: company, ola: companyToOla(company) });
+    result.push({ daId: daId, daName: daName, tipo: tipo, serviceType: serviceType, company: company, ola: companyToOla(company), dsp: companyToDsp(company) });
   }
   return result;
 }
@@ -919,7 +919,8 @@ function renderCanceladoCard(c) {
   var html = '<div class="cancelado-card' + cardClass + '">';
   html += '<div class="cancelado-info">';
   html += '<div class="nombre">' + c.daName + '<span class="tipo-badge" style="background:' + tipoBadgeColor(c.tipo) + '">' + c.tipo + '</span></div>';
-  html += '<div class="detalle">' + c.daId + ' — ' + c.company + '</div>';
+  var dspCorto = c.dsp || companyToDsp(c.company);
+  html += '<div class="detalle">' + c.daId + ' — ' + (dspCorto ? '<b style="color:var(--text)">' + dspCorto + '</b> · ' : '') + c.company + '</div>';
   html += '</div>';
   if (firmado) {
     html += '<div style="display:flex;align-items:center;gap:10px;">';
@@ -1177,11 +1178,13 @@ function construirHojaFirmas(firmas, noshows) {
     } else {
       celdaFirma = r.firma ? '<img src="' + r.firma + '" style="height:60px;max-width:200px;object-fit:contain;">' : '<span style="color:#999">—</span>';
     }
+    var dspCorto = companyToDsp(r.company);
     rows += '<tr>' +
       '<td>' + (idx+1) + '</td>' +
       '<td style="text-align:left">' + (r.daName || '') + '</td>' +
       '<td>' + r.id + '</td>' +
       '<td>' + (r.tipo || '') + '</td>' +
+      '<td><b>' + (dspCorto || '') + '</b></td>' +
       '<td>' + (r.company || '') + '</td>' +
       '<td>' + (r.hora || '') + '</td>' +
       '<td>' + celdaFirma + '</td>' +
@@ -1202,7 +1205,7 @@ function construirHojaFirmas(firmas, noshows) {
     '<h1>DSL1 — Hoja de Firmas de DAs Cancelados</h1>' +
     '<div class="sub">Fecha: ' + fecha + ' &nbsp;|&nbsp; Firmas: ' + totalFirmas + ' &nbsp;|&nbsp; No Show: ' + totalNoShow + '</div>' +
     '<table><thead><tr>' +
-    '<th>#</th><th>Nombre del DA</th><th>DA ID</th><th>Tipo</th><th>DSP / Compañía</th><th>Hora</th><th>Firma / Estatus</th>' +
+    '<th>#</th><th>Nombre del DA</th><th>DA ID</th><th>Tipo</th><th>DSP</th><th>Compañía</th><th>Hora</th><th>Firma / Estatus</th>' +
     '</tr></thead><tbody>' + rows + '</tbody></table>' +
     '<button class="noprint" onclick="window.print()" style="margin-top:20px;padding:12px 24px;background:#00897B;color:#fff;border:none;border-radius:6px;font-size:15px;cursor:pointer;">Imprimir</button>' +
     '</body></html>';
@@ -1498,6 +1501,19 @@ function companyToOla(company) {
   if (key.indexOf('loyola') > -1 || key.indexOf('rubalcava') > -1) return '2';
   if (key.indexOf('delivery boys') > -1) return '2';
   if (key.indexOf('b2b') > -1) return '2';
+  return '';
+}
+
+function companyToDsp(company) {
+  if (!company) return '';
+  var key = normalizarTexto(company);
+  if (key.indexOf('goship') > -1) return 'LGSE';
+  if (key.indexOf('inbox') > -1) return 'IXPY';
+  if (key.indexOf('ready to lease') > -1) return 'RTLV';
+  if (key.indexOf('baref') > -1) return 'LGDI';
+  if (key.indexOf('loyola') > -1 || key.indexOf('rubalcava') > -1) return 'LYRI';
+  if (key.indexOf('delivery boys') > -1) return 'DBOL';
+  if (key.indexOf('b2b') > -1) return 'B2BV';
   return '';
 }
 
