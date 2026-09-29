@@ -1209,6 +1209,9 @@ function construirHojaFirmas(firmas, noshows) {
   });
 
   var htmlDoc = '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Hoja de Firmas — DAs Cancelados</title>' +
+    '<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">' +
+    '<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"><\/script>' +
+    '<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"><\/script>' +
     '<style>' +
     'body{font-family:Arial,sans-serif;padding:30px;color:#111;}' +
     'h1{font-size:20px;margin:0 0 4px;}' +
@@ -1224,7 +1227,32 @@ function construirHojaFirmas(firmas, noshows) {
     '<table><thead><tr>' +
     '<th>#</th><th>Nombre del DA</th><th>DA ID</th><th>Tipo</th><th>DSP</th><th>Hora</th><th>Firma / Estatus</th>' +
     '</tr></thead><tbody>' + rows + '</tbody></table>' +
-    '<button class="noprint" onclick="window.print()" style="margin-top:20px;padding:12px 24px;background:#00897B;color:#fff;border:none;border-radius:6px;font-size:15px;cursor:pointer;">Imprimir</button>' +
+    '<div class="noprint" style="margin-top:20px;display:flex;gap:12px;">' +
+    '<button onclick="window.print()" style="padding:12px 24px;background:#00897B;color:#fff;border:none;border-radius:6px;font-size:15px;cursor:pointer;">Imprimir</button>' +
+    '<button id="btnPdf" onclick="descargarPDF()" style="padding:12px 24px;background:#E53935;color:#fff;border:none;border-radius:6px;font-size:15px;cursor:pointer;"><i class="fa-solid fa-file-pdf"></i> Descargar PDF</button>' +
+    '</div>' +
+    '<script>' +
+    'function descargarPDF(){' +
+    '  var btn=document.getElementById("btnPdf"); btn.textContent="Generando..."; btn.disabled=true;' +
+    '  var cont=document.querySelector("table").parentNode;' +
+    '  html2canvas(document.body,{scale:2,backgroundColor:"#ffffff"}).then(function(canvas){' +
+    '    var img=canvas.toDataURL("image/png");' +
+    '    var pdf=new window.jspdf.jsPDF("p","mm","a4");' +
+    '    var pw=pdf.internal.pageSize.getWidth();' +
+    '    var ph=pdf.internal.pageSize.getHeight();' +
+    '    var iw=pw-20;' +
+    '    var ih=canvas.height*iw/canvas.width;' +
+    '    var y=10; var rest=ih;' +
+    '    if(ih<=ph-20){ pdf.addImage(img,"PNG",10,10,iw,ih); }' +
+    '    else {' +
+    '      var pos=10;' +
+    '      while(rest>0){ pdf.addImage(img,"PNG",10,pos,iw,ih); rest-=(ph-20); pos-=(ph-20); if(rest>0) pdf.addPage(); }' +
+    '    }' +
+    '    pdf.save("Firmas_DAs_Cancelados_"+"' + fecha.replace(/ /g,'_') + '"+".pdf");' +
+    '    btn.innerHTML="<i class=\\"fa-solid fa-file-pdf\\"><\/i> Descargar PDF"; btn.disabled=false;' +
+    '  }).catch(function(e){ alert("Error generando PDF: "+e); btn.textContent="Descargar PDF"; btn.disabled=false; });' +
+    '}' +
+    '<\/script>' +
     '</body></html>';
 
   var win = window.open('', '_blank');
