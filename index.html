@@ -788,10 +788,14 @@ function doReset() {
 function tipoRosterRelevante(serviceType) {
   if (!serviceType) return null;
   var t = serviceType.toLowerCase();
-  if (t.indexOf('large van') > -1) return 'Large Van';
-  if (t.indexOf('low emission') > -1) return 'Low Emission';
-  if (t.indexOf('nursery') > -1) return 'Nursery Route';
-  return null; // ignorar Medium Van, Passenger Car, Long Range EV, etc.
+  // SOLO estos 3 tipos exactos — omitir todo lo demás
+  // Standard Parcel - Large Van (NO 'Extra Large Van' de Hub Transport)
+  if (t.indexOf('standard parcel') > -1 && t.indexOf('large van') > -1 && t.indexOf('extra large') === -1) return 'Large Van';
+  // Standard Parcel Low Emissions Vehicle
+  if (t.indexOf('standard parcel') > -1 && t.indexOf('low emission') > -1) return 'Low Emission';
+  // Nursery Route Level (NO 'AmFlex Vehicle Nursery')
+  if (t.indexOf('nursery route') > -1) return 'Nursery Route';
+  return null; // omitir Medium Van, Extra Large Van, AmFlex Nursery, Passenger Car, etc.
 }
 
 function openRosterModal() {
