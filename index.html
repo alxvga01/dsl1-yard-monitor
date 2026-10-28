@@ -597,6 +597,8 @@ function fetchData() {
     if (resp && resp.yard) yardData = resp.yard;
     if (resp && resp.wave) waveData = resp.wave;
     if (resp && resp.roster && resp.roster.length) rosterData = resp.roster;
+    // Aplicar el OLA_MAP vigente a los datos frescos del servidor (respeta la config)
+    aplicarOlaAlData();
     document.getElementById('refreshDot').className = 'refresh-dot';
     render();
     calcularCancelados();
@@ -604,6 +606,11 @@ function fetchData() {
     if (document.getElementById('canceladosModal').classList.contains('active')) renderCancelados();
     ocultarOverlay();
   });
+}
+
+function aplicarOlaAlData() {
+  waveData.forEach(function(w){ if (w.dsp && OLA_MAP[w.dsp]) w.ola = OLA_MAP[w.dsp]; });
+  yardData.forEach(function(r){ if (r.dsp && OLA_MAP[r.dsp]) r.ola = OLA_MAP[r.dsp]; });
 }
 
 // ===== MODAL =====
@@ -626,9 +633,11 @@ function renderPendientesModal() {
   var pendientesOla1 = [], pendientesOla2 = [], pendientesOtra = [];
   waveData.forEach(function(w) {
     if (!w.ruta || !w.ruta.startsWith('SV')) return;
-    var pend = { ruta: w.ruta, dsp: w.dsp||'', da: w.da||'', ola: w.ola||'', registered: !!registered[w.ruta] };
-    if (w.ola === '1') pendientesOla1.push(pend);
-    else if (w.ola === '2') pendientesOla2.push(pend);
+    // Calcular la ola al vuelo desde el DSP usando el OLA_MAP vigente (respeta la config)
+    var olaActual = (w.dsp && OLA_MAP[w.dsp]) ? OLA_MAP[w.dsp] : (w.ola || '');
+    var pend = { ruta: w.ruta, dsp: w.dsp||'', da: w.da||'', ola: olaActual, registered: !!registered[w.ruta] };
+    if (olaActual === '1') pendientesOla1.push(pend);
+    else if (olaActual === '2') pendientesOla2.push(pend);
     else pendientesOtra.push(pend);
   });
 
