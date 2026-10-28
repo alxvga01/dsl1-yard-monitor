@@ -316,6 +316,7 @@ body { background: var(--bg); font-family: -apple-system, BlinkMacSystemFont, 'S
     </select></label>
     <button onclick="doReset()" title="Limpiar Yard" style="background:var(--risk);border:none;color:white;border-radius:4px;padding:4px 8px;cursor:pointer;font-size:11px;font-weight:700;opacity:0.8;transition:opacity 0.2s;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.8'"><i class="fa-solid fa-trash-can"></i> Reset</button>
     <span class="refresh-dot" id="refreshDot" title="Conexión"></span>
+    <button onclick="openConfigModal()" title="Configuración" style="background:transparent;border:none;color:var(--text-muted);cursor:pointer;font-size:14px;opacity:0.45;transition:opacity 0.2s;padding:2px 4px;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.45'"><i class="fa-solid fa-gear"></i></button>
   </div>
 </div>
 
@@ -437,6 +438,26 @@ body { background: var(--bg); font-family: -apple-system, BlinkMacSystemFont, 'S
       <button class="firma-limpiar" onclick="limpiarFirma()"><i class="fa-solid fa-eraser"></i> Limpiar</button>
       <button class="firma-cancelar" onclick="cerrarFirma()"><i class="fa-solid fa-xmark"></i> Cancelar</button>
       <button class="firma-guardar" onclick="guardarFirma()"><i class="fa-solid fa-check"></i> Guardar Firma</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: Configuración de Olas (oculto) -->
+<div class="modal-overlay" id="configModal">
+  <div class="modal-header">
+    <div style="display:flex;align-items:center;gap:14px;">
+      <h2><i class="fa-solid fa-gear"></i> Configuración de Olas</h2>
+    </div>
+    <button class="modal-close" onclick="closeConfigModal()"><i class="fa-solid fa-xmark"></i></button>
+  </div>
+  <div class="modal-body">
+    <p style="color:var(--text-sec);margin-bottom:16px;font-size:14px;">
+      Asigna cada DSP a su Ola. Los cambios aplican a todos los dispositivos.
+    </p>
+    <div id="configDspList" style="max-width:500px;"></div>
+    <div style="display:flex;gap:10px;margin-top:20px;max-width:500px;">
+      <button class="action-btn" style="background:var(--text-muted);flex:1;" onclick="closeConfigModal()">Cancelar</button>
+      <button class="action-btn" style="background:var(--departed);flex:1;" onclick="guardarConfigOlas()"><i class="fa-solid fa-check"></i> Guardar</button>
     </div>
   </div>
 </div>
@@ -1267,6 +1288,81 @@ function construirHojaFirmas(firmas, noshows) {
 }
 
 
+
+// ===========================
+// CONFIGURACIÓN DE OLAS
+// ===========================
+var configTemp = {};
+
+function openConfigModal() {
+  // Copiar la config actual
+  configTemp = {};
+  DSP_LIST.forEach(function(dsp){ configTemp[dsp] = OLA_MAP[dsp] || '1'; });
+  document.getElementById('configModal').classList.add('active');
+  renderConfigDsps();
+  // Traer config fresca del servidor
+  if (USE_FETCH) {
+    serverGet('olaconfig', function(cfg){ if (cfg) { aplicarOlaConfig(cfg); configTemp = {}; DSP_LIST.forEach(function(d){ configTemp[d] = OLA_MAP[d] || '1'; }); renderConfigDsps(); } });
+  } else if (IS_GAS) {
+    google.script.run.withSuccessHandler(function(cfg){ if (cfg) { aplicarOlaConfig(cfg); configTemp = {}; DSP_LIST.forEach(function(d){ configTemp[d] = OLA_MAP[d] || '1'; }); renderConfigDsps(); } }).serverGetOlaConfig();
+  }
+}
+
+function closeConfigModal() {
+  document.getElementById('configModal').classList.remove('active');
+}
+
+function renderConfigDsps() {
+  var cont = document.getElementById('configDspList');
+  var html = '';
+  DSP_LIST.forEach(function(dsp){
+    var ola = configTemp[dsp] || '1';
+    html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;margin-bottom:8px;background:var(--surface);border:1px solid var(--border);border-radius:8px;">';
+    html += '<span style="font-size:17px;font-weight:800;">' + dsp + '</span>';
+    html += '<div style="display:flex;gap:8px;">';
+    html += '<button onclick="setConfigOla(\'' + dsp + '\',\'1\')" style="padding:8px 18px;border-radius:6px;border:2px solid var(--ola1);cursor:pointer;font-weight:700;font-size:14px;' + (ola==='1'?'background:var(--ola1);color:#fff;':'background:transparent;color:var(--ola1);') + '">Ola 1</button>';
+    html += '<button onclick="setConfigOla(\'' + dsp + '\',\'2\')" style="padding:8px 18px;border-radius:6px;border:2px solid var(--ola2);cursor:pointer;font-weight:700;font-size:14px;' + (ola==='2'?'background:var(--ola2);color:#fff;':'background:transparent;color:var(--ola2);') + '">Ola 2</button>';
+    html += '</div></div>';
+  });
+  cont.innerHTML = html;
+}
+
+function setConfigOla(dsp, ola) {
+  configTemp[dsp] = ola;
+  renderConfigDsps();
+}
+
+function aplicarOlaConfig(cfg) {
+  // Reemplaza OLA_MAP con la config recibida
+  DSP_LIST.forEach(function(dsp){ if (cfg[dsp]) OLA_MAP[dsp] = cfg[dsp]; });
+}
+
+function guardarConfigOlas() {
+  aplicarOlaConfig(configTemp);
+  toast('Guardando configuración...', 'info');
+  if (USE_FETCH) {
+    serverPost('guardarOlaConfig', {config: configTemp}, function(){ toast('Configuración guardada', 'success'); recalcularOlas(); });
+  } else if (IS_GAS) {
+    google.script.run.withSuccessHandler(function(){ toast('Configuración guardada', 'success'); recalcularOlas(); }).withFailureHandler(function(e){ toast('Error: '+(e.message||e),'error'); }).serverGuardarOlaConfig(configTemp);
+  } else {
+    toast('Configuración guardada (local)', 'success');
+    recalcularOlas();
+  }
+  closeConfigModal();
+}
+
+function recalcularOlas() {
+  // Recalcular la ola de las rutas en waveData y yardData según el nuevo OLA_MAP
+  waveData.forEach(function(w){ if (w.dsp && OLA_MAP[w.dsp]) w.ola = OLA_MAP[w.dsp]; });
+  yardData.forEach(function(r){ if (r.dsp && OLA_MAP[r.dsp]) r.ola = OLA_MAP[r.dsp]; });
+  // Recalcular ola de cancelados (derivada de la compañía → DSP → OLA_MAP)
+  rosterData.forEach(function(c){ c.ola = companyToOla(c.company); });
+  render();
+  if (document.getElementById('pendientesModal').classList.contains('active')) renderPendientesModal();
+  if (document.getElementById('canceladosModal').classList.contains('active')) renderCancelados();
+}
+
+
 function finalizarDespacho() {
   // Recopilar toda la info del día (EN YARD + DESPACHADAS, excluir marcadores FIN)
   var rutas = yardData.filter(function(r){ return r.ruta && r.ruta !== '---FIN---'; });
@@ -1517,8 +1613,10 @@ function render() { try {
 
 var OLA_MAP = {
   'IXPY': '1', 'LGSE': '1', 'LGDI': '1', 'RTLV': '1',
-  'LYRI': '2', 'DBOL': '2', 'B2BV': '2'
+  'LYRI': '2', 'DBOL': '2', 'B2BV': '2', 'MLSD': '2'
 };
+// Lista fija de DSPs (para el panel de configuración)
+var DSP_LIST = ['IXPY','LGSE','LGDI','RTLV','LYRI','DBOL','B2BV','MLSD'];
 // Mapeo de compañía del Roster -> Ola (para DAs cancelados que no tienen ruta/DSP)
 var COMPANY_OLA_MAP = {
   'goship': '1',
@@ -1541,16 +1639,9 @@ function normalizarTexto(s) {
 }
 
 function companyToOla(company) {
-  if (!company) return '';
-  var key = normalizarTexto(company);
-  // Coincidencia por palabra clave distintiva de cada compañía
-  if (key.indexOf('goship') > -1) return '1';
-  if (key.indexOf('inbox') > -1) return '1';
-  if (key.indexOf('ready to lease') > -1) return '1';
-  if (key.indexOf('baref') > -1) return '1';
-  if (key.indexOf('loyola') > -1 || key.indexOf('rubalcava') > -1) return '2';
-  if (key.indexOf('delivery boys') > -1) return '2';
-  if (key.indexOf('b2b') > -1) return '2';
+  // Deriva la Ola del DSP de la compañía, usando el OLA_MAP configurable
+  var dsp = companyToDsp(company);
+  if (dsp && OLA_MAP[dsp]) return OLA_MAP[dsp];
   return '';
 }
 
@@ -1564,6 +1655,7 @@ function companyToDsp(company) {
   if (key.indexOf('loyola') > -1 || key.indexOf('rubalcava') > -1) return 'LYRI';
   if (key.indexOf('delivery boys') > -1) return 'DBOL';
   if (key.indexOf('b2b') > -1) return 'B2BV';
+  if (key.indexOf('mochilera') > -1) return 'MLSD';
   return '';
 }
 
@@ -1656,9 +1748,18 @@ function parseCSVToRoutes(text) {
   return routes;
 }
 
+function cargarOlaConfigInicial() {
+  if (USE_FETCH) {
+    serverGet('olaconfig', function(cfg){ if (cfg) { aplicarOlaConfig(cfg); recalcularOlas(); } });
+  } else if (IS_GAS) {
+    google.script.run.withSuccessHandler(function(cfg){ if (cfg) { aplicarOlaConfig(cfg); recalcularOlas(); } }).serverGetOlaConfig();
+  }
+}
+
 try {
   initGrid();
   fetchData();
+  cargarOlaConfigInicial();
   setInterval(fetchData, REFRESH_MS);
   // Timeout de seguridad: ocultar overlay a los 12s aunque el servidor tarde
   setTimeout(ocultarOverlay, 12000);
