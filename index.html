@@ -490,22 +490,33 @@ var WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbxc--pO2mdCnkUiP58pQiY
 var USE_FETCH = !IS_GAS && WEBAPP_URL.indexOf('script.google.com') > -1;
 
 // === LECTURA (GET) universal — usa JSONP para evitar CORS ===
-function serverGet(section, callback) {
-  if (IS_GAS) {
+function serverGet(section, callback, extraParams) {
+  if (IS_GAS && !USE_FETCH) {
+    // En Apps Script directo, para firma_una usar la función dedicada
+    if (section === 'firma_una' && extraParams && extraParams.daId) {
+      google.script.run.withSuccessHandler(function(img){ callback({firma: img}); }).withFailureHandler(function(e){ console.error(e); callback({}); }).serverGetFirmaImagen(extraParams.daId);
+      return;
+    }
     google.script.run.withSuccessHandler(callback).withFailureHandler(function(e){ console.error(e); }).serverGetData(section);
     return;
   }
   if (USE_FETCH) {
-    // JSONP: Apps Script permite GET con callback sin problemas de CORS
-    var cbName = 'jsonp_' + Date.now() + '_' + Math.floor(Math.random()*10000);
+    var cbName = 'jsonp_' + Date.now() + '_' + Math.floor(Math.random()*100000);
     window[cbName] = function(data) {
       try { callback(data); } catch(e){ console.error(e); }
       delete window[cbName];
       if (s.parentNode) s.parentNode.removeChild(s);
     };
+    var url = WEBAPP_URL + '?section=' + encodeURIComponent(section);
+    if (extraParams) {
+      for (var k in extraParams) {
+        url += '&' + encodeURIComponent(k) + '=' + encodeURIComponent(extraParams[k]);
+      }
+    }
+    url += '&callback=' + cbName + '&t=' + Date.now();
     var s = document.createElement('script');
-    s.src = WEBAPP_URL + '?section=' + encodeURIComponent(section) + '&callback=' + cbName + '&t=' + Date.now();
-    s.onerror = function(){ console.error('Error GET JSONP'); if (s.parentNode) s.parentNode.removeChild(s); };
+    s.src = url;
+    s.onerror = function(){ console.error('Error GET JSONP'); try { callback({}); } catch(e){} if (s.parentNode) s.parentNode.removeChild(s); };
     document.body.appendChild(s);
     return;
   }
@@ -1277,13 +1288,7 @@ function reiniciarFirmas() {
 
 function imprimirHojaFirmas() {
   toast('Generando hoja de firmas...', 'info');
-  if (USE_FETCH) {
-    serverGet('firmas_full', function(firmas) {
-      serverGet('noshows', function(ns) { construirHojaFirmas(firmas || {}, ns || {}); });
-    });
-    return;
-  }
-  if (IS_GAS) {
+  if (IS_GAS && !USE_FETCH) {
     google.script.run
       .withSuccessHandler(function(firmas) {
         google.script.run
@@ -1293,6 +1298,29 @@ function imprimirHojaFirmas() {
       })
       .withFailureHandler(function(e){ toast('Error: ' + (e.message||e), 'error'); })
       .serverGetFirmas();
+    return;
+  }
+  if (USE_FETCH) {
+    // 1) Traer lista ligera (sin imágenes) + no shows
+    serverGet('firmas', function(firmas) {
+      serverGet('noshows', function(ns) {
+        firmas = firmas || {};
+        ns = ns || {};
+        // 2) Traer cada imagen individualmente (JSONP pequeño, confiable)
+        var ids = Object.keys(firmas);
+        var pendientes = ids.length;
+        if (pendientes === 0) { construirHojaFirmas(firmas, ns); return; }
+        ids.forEach(function(id) {
+          serverGet('firma_una', function(res) {
+            if (res && res.firma) firmas[id].firma = res.firma;
+            pendientes--;
+            if (pendientes <= 0) construirHojaFirmas(firmas, ns);
+          }, {daId: id});
+        });
+        // Timeout de seguridad: construir aunque falte alguna imagen
+        setTimeout(function(){ if (pendientes > 0) { pendientes = 0; construirHojaFirmas(firmas, ns); } }, 12000);
+      });
+    });
     return;
   }
   toast('Solo disponible en el dashboard publicado', 'error');
