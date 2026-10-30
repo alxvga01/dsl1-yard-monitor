@@ -1187,6 +1187,18 @@ function colaFirmasKey() {
 function getColaFirmas() {
   try { return JSON.parse(localStorage.getItem(colaFirmasKey()) || '{}'); } catch(e){ return {}; }
 }
+// Borra respaldos locales de firmas de días ANTERIORES (deja solo el de hoy)
+function limpiarRespaldosViejos() {
+  try {
+    var hoyKey = colaFirmasKey();
+    var aBorrar = [];
+    for (var i = 0; i < localStorage.length; i++) {
+      var k = localStorage.key(i);
+      if (k && k.indexOf('firmas_pendientes_') === 0 && k !== hoyKey) aBorrar.push(k);
+    }
+    aBorrar.forEach(function(k){ localStorage.removeItem(k); });
+  } catch(e){}
+}
 function setColaFirmas(obj) {
   try { localStorage.setItem(colaFirmasKey(), JSON.stringify(obj)); } catch(e){ console.error('No se pudo guardar en localStorage', e); }
 }
@@ -1270,10 +1282,23 @@ function comprimirFirma(canvas) {
 
 
 
+function limpiarRespaldoLocalFirmas() {
+  // Borra TODAS las colas de firmas locales (de hoy y de días anteriores)
+  try {
+    var aBorrar = [];
+    for (var i = 0; i < localStorage.length; i++) {
+      var k = localStorage.key(i);
+      if (k && k.indexOf('firmas_pendientes_') === 0) aBorrar.push(k);
+    }
+    aBorrar.forEach(function(k){ localStorage.removeItem(k); });
+  } catch(e){ console.error('No se pudo limpiar respaldo local', e); }
+}
+
 function reiniciarFirmas() {
   if (!confirm('¿Reiniciar todas las firmas y No Shows de hoy? Los DAs cancelados podrán volver a firmar desde cero.')) return;
   firmados = {};
   noShows = {};
+  limpiarRespaldoLocalFirmas();  // borrar respaldo local también
   renderCancelados();
   toast('Firmas y No Shows reiniciados', 'success');
   if (USE_FETCH) {
@@ -1308,9 +1333,10 @@ function imprimirHojaFirmas() {
       serverGet('noshows', function(ns) {
         firmas = firmas || {};
         ns = ns || {};
-        // Incluir firmas del respaldo local que quizá no llegaron al servidor
+        // Incluir firmas del respaldo local SOLO si no están confirmadas Y no fueron reiniciadas.
+        // (Si el servidor ya no las tiene porque se reiniciaron, NO resucitarlas.)
         for (var localId in cola) {
-          if (cola[localId] && cola[localId].payload && !firmas[localId]) {
+          if (cola[localId] && cola[localId].payload && !cola[localId].confirmada && !firmas[localId]) {
             var pl = cola[localId].payload;
             firmas[localId] = { daName: pl.daName, tipo: pl.tipo, company: pl.company, hora: pl.hora };
           }
@@ -1958,6 +1984,7 @@ function cargarOlaConfigInicial() {
 }
 
 try {
+  limpiarRespaldosViejos();
   initGrid();
   fetchData();
   cargarOlaConfigInicial();
