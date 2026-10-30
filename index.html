@@ -993,8 +993,9 @@ function renderCanceladoCard(c) {
   html += '<div class="detalle">' + c.daId + (dspCorto ? ' — <b style="color:var(--text)">' + dspCorto + '</b>' : '') + '</div>';
   html += '</div>';
   if (firmado) {
-    html += '<div style="display:flex;align-items:center;gap:10px;">';
+    html += '<div style="display:flex;align-items:center;gap:8px;">';
     html += '<div class="cancelado-firmado-label"><i class="fa-solid fa-circle-check"></i> Firmó ' + firmados[c.daId] + '</div>';
+    html += '<button class="cancelado-refirmar-btn" style="background:var(--ola1);" onclick="verFirma(\'' + c.daId + '\',\'' + (c.daName||'').replace(/'/g,"") + '\')" title="Ver firma"><i class="fa-solid fa-eye"></i> Ver</button>';
     html += '<button class="cancelado-refirmar-btn" onclick="refirmar(\'' + c.daId + '\')" title="Volver a firmar"><i class="fa-solid fa-rotate-left"></i> Rehacer</button>';
     html += '</div>';
   } else if (noShow) {
@@ -1301,24 +1302,42 @@ function imprimirHojaFirmas() {
     return;
   }
   if (USE_FETCH) {
+    var cola = getColaFirmas(); // respaldo local
     // 1) Traer lista ligera (sin imágenes) + no shows
     serverGet('firmas', function(firmas) {
       serverGet('noshows', function(ns) {
         firmas = firmas || {};
         ns = ns || {};
-        // 2) Traer cada imagen individualmente (JSONP pequeño, confiable)
+        // Incluir firmas del respaldo local que quizá no llegaron al servidor
+        for (var localId in cola) {
+          if (cola[localId] && cola[localId].payload && !firmas[localId]) {
+            var pl = cola[localId].payload;
+            firmas[localId] = { daName: pl.daName, tipo: pl.tipo, company: pl.company, hora: pl.hora };
+          }
+        }
         var ids = Object.keys(firmas);
         var pendientes = ids.length;
         if (pendientes === 0) { construirHojaFirmas(firmas, ns); return; }
+        var finalizado = false;
+        function terminar() { if (!finalizado) { finalizado = true; construirHojaFirmas(firmas, ns); } }
         ids.forEach(function(id) {
+          // Si ya tenemos la imagen en el respaldo local, usarla directo
+          if (cola[id] && cola[id].payload && cola[id].payload.firmaImg) {
+            firmas[id].firma = cola[id].payload.firmaImg;
+            pendientes--;
+            if (pendientes <= 0) terminar();
+            return;
+          }
+          // Si no, pedirla al servidor
           serverGet('firma_una', function(res) {
             if (res && res.firma) firmas[id].firma = res.firma;
+            else if (cola[id] && cola[id].payload && cola[id].payload.firmaImg) firmas[id].firma = cola[id].payload.firmaImg;
             pendientes--;
-            if (pendientes <= 0) construirHojaFirmas(firmas, ns);
+            if (pendientes <= 0) terminar();
           }, {daId: id});
         });
         // Timeout de seguridad: construir aunque falte alguna imagen
-        setTimeout(function(){ if (pendientes > 0) { pendientes = 0; construirHojaFirmas(firmas, ns); } }, 12000);
+        setTimeout(terminar, 12000);
       });
     });
     return;
@@ -1492,6 +1511,56 @@ function recalcularOlas() {
   render();
   if (document.getElementById('pendientesModal').classList.contains('active')) renderPendientesModal();
   if (document.getElementById('canceladosModal').classList.contains('active')) renderCancelados();
+}
+
+
+
+// === VER FIRMA (confirmar visualmente) ===
+function verFirma(daId, daName) {
+  toast('Cargando firma...', 'info');
+  // Primero intentar desde el respaldo local (instantáneo)
+  var cola = getColaFirmas();
+  if (cola[daId] && cola[daId].payload && cola[daId].payload.firmaImg) {
+    mostrarFirmaOverlay(daName, cola[daId].payload.firmaImg, cola[daId].confirmada);
+    return;
+  }
+  // Si no está local, traerla del servidor
+  if (USE_FETCH) {
+    serverGet('firma_una', function(res){
+      if (res && res.firma) mostrarFirmaOverlay(daName, res.firma, true);
+      else toast('No se encontró la firma en el servidor', 'error');
+    }, {daId: daId});
+  } else if (IS_GAS) {
+    google.script.run.withSuccessHandler(function(img){
+      if (img) mostrarFirmaOverlay(daName, img, true);
+      else toast('No se encontró la firma', 'error');
+    }).serverGetFirmaImagen(daId);
+  }
+}
+
+function mostrarFirmaOverlay(daName, firmaImg, confirmada) {
+  var ov = document.getElementById('verFirmaOverlay');
+  if (!ov) {
+    ov = document.createElement('div');
+    ov.id = 'verFirmaOverlay';
+    ov.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.55);z-index:7000;display:flex;align-items:center;justify-content:center;padding:20px;';
+    ov.onclick = function(e){ if (e.target === ov) ov.style.display = 'none'; };
+    document.body.appendChild(ov);
+  }
+  var estado = confirmada
+    ? '<span style="color:var(--departed);font-weight:700;"><i class="fa-solid fa-circle-check"></i> Guardada en servidor</span>'
+    : '<span style="color:#FB8C00;font-weight:700;"><i class="fa-solid fa-clock"></i> Pendiente de sincronizar</span>';
+  ov.innerHTML = '<div style="background:#fff;border-radius:12px;padding:20px;max-width:480px;width:100%;color:#111;">' +
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">' +
+    '<h2 style="font-size:18px;margin:0;color:#111;">Firma de ' + (daName||'') + '</h2>' +
+    '<button onclick="document.getElementById(\'verFirmaOverlay\').style.display=\'none\'" style="width:38px;height:38px;border-radius:50%;background:#eee;border:none;font-size:18px;cursor:pointer;">&times;</button>' +
+    '</div>' +
+    '<div style="border:2px solid #ddd;border-radius:8px;padding:8px;background:#fff;text-align:center;">' +
+    '<img src="' + firmaImg + '" style="max-width:100%;max-height:220px;object-fit:contain;">' +
+    '</div>' +
+    '<div style="margin-top:12px;font-size:13px;text-align:center;">' + estado + '</div>' +
+    '</div>';
+  ov.style.display = 'flex';
 }
 
 
